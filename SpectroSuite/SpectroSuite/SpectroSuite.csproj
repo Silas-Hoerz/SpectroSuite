@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="data\calibration\" />
+    <Folder Include="data\captures\" />
+    <Folder Include="docs\snippets\" />
+    <Folder Include="src\Helpers\" />
+    <Folder Include="tests\test_images\" />
+    <Folder Include="tools\" />
+    <Folder Include="src\Models\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="uEyeDotNet">
+      <HintPath>..\..\..\..\..\..\source\repos\Fadenkreuz\Spektrometer_v01\Spektrometer_v01\uEyeDotNet.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

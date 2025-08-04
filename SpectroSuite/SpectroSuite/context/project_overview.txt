@@ -1,0 +1,123 @@
+SpectroSuite - Projektübersicht
+===============================
+
+Allgemein
+---------
+Projektname: SpectroSuite
+Ziel: Entwicklung einer modularen, nachhaltigen WPF-Software zur Steuerung, Kalibrierung und Analyse eines DIY-Spektrometers mit einer IDS UI-2212SE-M Kamera.
+Sprache: C#
+UI-Framework: WPF (.NET 6 oder höher)
+Plattform: Windows 10+
+Kamera-API: uEyeDotNet.dll (IDS Imaging)
+
+Verwendete Tools
+----------------
+- Visual Studio 2022
+- ChatGPT (Designhilfe, Architektur, Debugging)
+- RoVoDev (Codeanalyse und Refactoring)
+- IDS uEye Cockpit Beispiel (Referenz)
+- Git (lokal oder GitHub zur Versionskontrolle, optional)
+
+Hardware
+--------
+- Kamera: UI-2212SE-M von IDS Imaging
+- Interface: USB 2.0
+- Auflösung: 1280 x 1024
+- Sensor: CMOS, Monochrom
+- Eingebaut in DIY-Spektrometer mit schräger Sensorlage
+
+Projektziele (Phasen)
+---------------------
+1. Bildaufnahme & Kamera-Konfiguration (aktueller Schritt)
+    - Live-Bild anzeigen
+    - Bildaufnahme in voller Qualität (RAW, 8/10/12 Bit)
+    - Speichern des Bilds für weitere Verarbeitung
+    - Kamera-Parameter über UI einstellbar
+
+2. Kalibrierung
+    - Auswahl einer Linie im Bild zur Spektrenextraktion
+    - Korrektur von Winkelfehlern und Bildverschiebung
+    - Wellenlängenkalibrierung mit bekannten Lichtquellen
+    - Korrektur des Sensorspektrums (Sensitivitätsverlauf)
+    - Speicherung und Laden von Kalibrierprofilen
+
+3. Spektrumsdarstellung
+    - Plot: Intensität vs. Wellenlänge
+    - Werkzeuge: Zoom, Peak-Erkennung, Messfunktionen
+    - Export: CSV, PNG, JSON, etc.
+
+4. Analyse & Farbräume
+    - Farbanalyse des Spektrums
+    - Umrechnung in CIE 1931 / CIE 1976 Koordinaten
+    - Visualisierung in Farbräumen
+    - Vergleich mit Zielwerten
+
+5. LED-Steuerung (später)
+    - Steuerung einer RGBAM-Lichtquelle basierend auf gewünschter Zielfarbe
+    - Entwicklung eines Spektrum-zu-Farbe-Mappings
+
+Projektstruktur (Dateien & Ordner)
+----------------------------------
+SpectroSuite/
+├── bin/                        # Build-Ausgabe (automatisch erzeugt)
+├── obj/                        # Kompilierte Zwischenstufen (automatisch erzeugt)
+├── App.xaml                   # Einstiegspunkt für die WPF-App (Ressourcen)
+├── App.xaml.cs               # Code-Behind für App.xaml
+├── AssemblyInfo.cs           # Projektmetadaten
+├── MainWindow.xaml           # Hauptfenster (zunächst UI für Kamera)
+├── MainWindow.xaml.cs       # Logik für das Hauptfenster
+├── SpectroSuite.csproj       # Projektdatei
+├── SpectroSuite.csproj.user  # Benutzerbezogene Projektinfos
+├── context/                  # Projektkontext zur KI-Unterstützung
+│   └── project_overview.txt
+├── src/                      # Geplante modulare Struktur
+│   ├── Views/
+│   │   ├── CameraView.xaml
+│   │   ├── CalibrationView.xaml
+│   │   └── SpectrumView.xaml
+│   ├── ViewModels/
+│   │   ├── CameraViewModel.cs
+│   │   ├── CalibrationViewModel.cs
+│   │   └── SpectrumViewModel.cs
+│   ├── Models/
+│   │   ├── SpectralData.cs
+│   │   ├── CalibrationProfile.cs
+│   │   └── CameraSettings.cs
+│   ├── Services/
+│   │   ├── CameraService.cs    #wurde jetzt schon erstellt
+│   │   ├── CalibrationService.cs
+│   │   └── SpectrumAnalysisService.cs
+│   └── Helpers/
+│       └── MathHelpers.cs
+├── data/
+│   ├── calibration/           # Kalibrierungsprofile
+│   └── captures/              # Aufgenommene Rohbilder
+├── docs/
+│   └── design_notes.md        # Technische Notizen und Skizzen
+├── tools/
+│   └── uEyeDotNet.dll         # IDS Kamera-API
+└── tests/
+    └── test_images/           # Testbilder für Auswertung & UI
+
+Designprinzipien
+----------------
+- MVVM Pattern für UI-Logik-Trennung
+- Clean Code: sprechende Namen, Modulare Klassen, Kapselung
+- Kein Code in Code-Behind außer View-spezifisch
+- Async/Await für UI-Interaktion und Kamera
+- Logging mit Serilog/NLog
+- Wiederverwendbare Services & Models
+- Wartbar, testbar, dokumentiert
+
+Hinweise zur KI-Nutzung
+-----------------------
+- ChatGPT: Design, Architektur, gezielte Hilfe
+- RoVoDev: Code-Analyse, Refactoring, Verständnis des Example-Codes
+- Kontextdatei (`project_overview.txt`) regelmäßig aktuell halten
+
+Nächste Schritte
+----------------
+[ ] Grundstruktur mit Visual Studio erstellen
+[ ] Kamera-Basisfunktionen (Livebild, Einstellungen)
+[ ] Example analysieren mit RoVoDev (C# Cockpit)
+[ ] Erste UI-Fenster anlegen (Kameraansicht)

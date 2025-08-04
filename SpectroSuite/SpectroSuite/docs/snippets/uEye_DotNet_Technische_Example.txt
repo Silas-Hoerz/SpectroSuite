@@ -1,0 +1,818 @@
+================================================================================
+TECHNISCHE DOKUMENTATION: uEye .NET SDK Integration
+IDS-Kamera (z.B. UI-2212SE-M) mit uEyeDotNet.dll
+================================================================================
+
+INHALTSVERZEICHNIS:
+1. Überblick und Projektstruktur
+2. Kamera-Initialisierung und Verbindung
+3. Verfügbare Kameras anzeigen und auswählen
+4. Kameraparameter konfigurieren
+5. Bildaufnahme und Datenverarbeitung
+6. Event-Handling und Buffer-Management
+7. Wichtige Klassen und Strukturen
+8. Best Practices
+9. Wiederverwendbare Code-Beispiele
+
+================================================================================
+1. ÜBERBLICK UND PROJEKTSTRUKTUR
+================================================================================
+
+Das uEye_DotNet_C#_Cockpit ist eine vollständige Windows Forms Anwendung, die 
+die Integration von IDS uEye-Kameras über das .NET SDK demonstriert.
+
+WICHTIGE ASSEMBLIES:
+- uEyeDotNet.dll: Haupt-SDK für Kamera-Funktionalität
+- uEyeDotNetFramework.dll: Framework-spezifische Erweiterungen
+
+KERNKOMPONENTEN:
+- MainForm.cs: Hauptfenster mit Kamera-Steuerung und Live-Anzeige
+- CameraChoose.cs: Kameraauswahl-Dialog
+- MemoryHelper.cs: Speicherverwaltung für Bildpuffer
+- CameraControl.cs: Timing-Parameter (Belichtung, Framerate, Pixeluhr)
+- PictureControl.cs: Bildparameter (Gain, Gamma, Weißabgleich)
+- SizeControl.cs: Bildgröße und AOI-Einstellungen
+- FormatControl.cs: Farbmodus und Display-Einstellungen
+
+================================================================================
+2. KAMERA-INITIALISIERUNG UND VERBINDUNG
+================================================================================
+
+GRUNDLEGENDE KAMERA-INITIALISIERUNG:
+
+```csharp
+// Kamera-Objekt erstellen (noch nicht geöffnet)
+uEye.Camera m_Camera = new uEye.Camera();
+
+// Kamera mit Device-ID initialisieren
+uEye.Defines.Status statusRet = m_Camera.Init(
+    deviceID | (Int32)uEye.Defines.DeviceEnumeration.UseDeviceID, 
+    pictureBoxDisplay.Handle);
+
+if (statusRet != uEye.Defines.Status.SUCCESS)
+{
+    MessageBox.Show("Kamera-Initialisierung fehlgeschlagen");
+    return statusRet;
+}
+```
+
+VOLLSTÄNDIGE INITIALISIERUNGSSEQUENZ:
+
+```csharp
+private uEye.Defines.Status initCamera()
+{
+    // 1. Kameraauswahl-Dialog anzeigen
+    CameraChoose chooseForm = new CameraChoose();
+    uEye.Defines.Status statusRet = uEye.Defines.Status.NO_SUCCESS;
+    
+    if (chooseForm.ShowDialog() == DialogResult.OK)
+    {
+        // 2. Kamera mit ausgewählter Device-ID initialisieren
+        statusRet = m_Camera.Init(
+            chooseForm.DeviceID | (Int32)uEye.Defines.DeviceEnumeration.UseDeviceID, 
+            pictureBoxDisplay.Handle);
+        
+        if (statusRet != uEye.Defines.Status.SUCCESS)
+            return statusRet;
+
+        // 3. Farbmodus setzen (BGR8Packed für 24-Bit RGB)
+        statusRet = m_Camera.PixelFormat.Set(uEye.Defines.ColorMode.BGR8Packed);
+        if (statusRet != uEye.Defines.Status.SUCCESS)
+            return statusRet;
+
+        // 4. Bildpuffer allokieren (3 Puffer für Sequenz-Aufnahme)
+        statusRet = MemoryHelper.AllocImageMems(m_Camera, 3);
+        if (statusRet != uEye.Defines.Status.SUCCESS)
+            return statusRet;
+
+        // 5. Puffer-Sequenz initialisieren
+        statusRet = MemoryHelper.InitSequence(m_Camera);
+        if (statusRet != uEye.Defines.Status.SUCCESS)
+            return statusRet;
+
+        // 6. Frame-Event registrieren
+        m_Camera.EventFrame += onFrameEvent;
+
+        return statusRet;
+    }
+    
+    return statusRet;
+}
+```
+
+KAMERA SCHLIESSEN:
+
+```csharp
+private void CloseCamera()
+{
+    // Event-Handler entfernen
+    m_Camera.EventFrame -= onFrameEvent;
+    
+    // Aufnahme stoppen
+    m_Camera.Acquisition.Stop();
+    
+    // Kamera schließen
+    m_Camera.Exit();
+}
+```
+
+================================================================================
+3. VERFÜGBARE KAMERAS ANZEIGEN UND AUSWÄHLEN
+================================================================================
+
+KAMERALISTE ABRUFEN:
+
+```csharp
+// Alle verfügbaren Kameras auflisten
+uEye.Types.CameraInformation[] cameraList;
+uEye.Info.Camera.GetCameraList(out cameraList);
+
+foreach (uEye.Types.CameraInformation info in cameraList)
+{
+    Console.WriteLine($"Kamera-ID: {info.CameraID}");
+    Console.WriteLine($"Device-ID: {info.DeviceID}");
+    Console.WriteLine($"Modell: {info.Model}");
+    Console.WriteLine($"Seriennummer: {info.SerialNumber}");
+    Console.WriteLine($"In Verwendung: {info.InUse}");
+}
+```
+
+KAMERA-EVENTS FÜR HOT-PLUG:
+
+```csharp
+// Event-Handler für neue/entfernte Kameras registrieren
+uEye.Info.Camera.EventNewDevice += onCameraEvent;
+uEye.Info.Camera.EventDeviceRemoved += onCameraEvent;
+
+private void onCameraEvent(object sender, EventArgs e)
+{
+    // Kameraliste aktualisieren (Thread-sicher)
+    this.Invoke(new Action(UpdateCameraList));
+}
+
+// Event-Handler beim Schließen entfernen
+uEye.Info.Camera.EventNewDevice -= onCameraEvent;
+uEye.Info.Camera.EventDeviceRemoved -= onCameraEvent;
+```
+
+================================================================================
+4. KAMERAPARAMETER KONFIGURIEREN
+================================================================================
+
+BELICHTUNGSZEIT (EXPOSURE):
+
+```csharp
+// Belichtungszeit-Bereich abrufen
+uEye.Types.Range<Double> exposureRange;
+m_Camera.Timing.Exposure.GetRange(out exposureRange);
+
+// Belichtungszeit setzen (in Millisekunden)
+double exposureTime = 10.0; // 10ms
+uEye.Defines.Status status = m_Camera.Timing.Exposure.Set(exposureTime);
+
+// Aktuelle Belichtungszeit abrufen
+double currentExposure;
+m_Camera.Timing.Exposure.Get(out currentExposure);
+
+// Feine Belichtungszeit-Einstellung (falls unterstützt)
+if (m_Camera.Timing.Exposure.Fine.Supported)
+{
+    m_Camera.Timing.Exposure.Fine.GetRange(out exposureRange);
+    m_Camera.Timing.Exposure.Fine.Set(exposureTime);
+}
+```
+
+PIXELUHR (PIXEL CLOCK):
+
+```csharp
+// Pixeluhr-Bereich abrufen
+uEye.Types.Range<Int32> pixelClockRange;
+m_Camera.Timing.PixelClock.GetRange(out pixelClockRange);
+
+// Pixeluhr setzen (in MHz)
+int pixelClock = 25; // 25 MHz
+m_Camera.Timing.PixelClock.Set(pixelClock);
+
+// Aktuelle Pixeluhr abrufen
+int currentPixelClock;
+m_Camera.Timing.PixelClock.Get(out currentPixelClock);
+```
+
+FRAMERATE:
+
+```csharp
+// Framerate-Bereich abrufen
+uEye.Types.Range<Double> framerateRange;
+m_Camera.Timing.Framerate.GetFrameRateRange(out framerateRange);
+
+// Framerate setzen (in fps)
+double framerate = 30.0; // 30 fps
+m_Camera.Timing.Framerate.Set(framerate);
+
+// Aktuelle Framerate abrufen
+double currentFramerate;
+m_Camera.Timing.Framerate.Get(out currentFramerate);
+
+// Maximale Framerate setzen
+m_Camera.Timing.Framerate.Set(framerateRange.Maximum);
+```
+
+GAIN-EINSTELLUNGEN:
+
+```csharp
+// Master Gain setzen
+int masterGain = 50; // 0-100
+m_Camera.Gain.Hardware.Scaled.SetMaster(masterGain);
+
+// RGB-Gain einzeln setzen
+m_Camera.Gain.Hardware.Scaled.SetRed(redGain);
+m_Camera.Gain.Hardware.Scaled.SetGreen(greenGain);
+m_Camera.Gain.Hardware.Scaled.SetBlue(blueGain);
+
+// Gain-Boost aktivieren (falls unterstützt)
+if (m_Camera.Gain.Hardware.Boost.Supported)
+{
+    m_Camera.Gain.Hardware.Boost.SetEnable(true);
+}
+
+// Auto-Gain aktivieren
+m_Camera.AutoFeatures.Software.Gain.SetEnable(true);
+```
+
+GAMMA-KORREKTUR:
+
+```csharp
+// Software-Gamma setzen (100 = 1.0)
+int gammaValue = 100; // Gamma 1.0
+m_Camera.Gamma.Software.Set(gammaValue);
+
+// Hardware-Gamma aktivieren (falls unterstützt)
+if (m_Camera.Gamma.Hardware.Supported)
+{
+    m_Camera.Gamma.Hardware.SetEnable(true);
+}
+```
+
+WEIßABGLEICH:
+
+```csharp
+// Auto-Weißabgleich aktivieren
+m_Camera.AutoFeatures.Software.WhiteBalance.SetEnable(true);
+
+// Einmaliger Weißabgleich
+m_Camera.AutoFeatures.Software.WhiteBalance.SetEnable(uEye.Defines.ActivateMode.Once);
+
+// Weißabgleich deaktivieren
+m_Camera.AutoFeatures.Software.WhiteBalance.SetEnable(false);
+
+// Status prüfen
+uEye.Defines.ActivateMode whiteBalanceMode;
+m_Camera.AutoFeatures.Software.WhiteBalance.GetEnable(out whiteBalanceMode);
+```
+
+AUTO-FEATURES:
+
+```csharp
+// Auto-Belichtung (AES - Auto Exposure Shutter)
+m_Camera.AutoFeatures.Software.Shutter.SetEnable(true);
+
+// Auto-Framerate (nur wenn Auto-Belichtung aktiv)
+if (autoExposureEnabled)
+{
+    m_Camera.AutoFeatures.Software.Framerate.SetEnable(true);
+}
+
+// Status der Auto-Features prüfen
+Boolean isAutoExposureEnabled;
+m_Camera.AutoFeatures.Software.Shutter.GetEnable(out isAutoExposureEnabled);
+```
+
+================================================================================
+5. BILDAUFNAHME UND DATENVERARBEITUNG
+================================================================================
+
+SPEICHERVERWALTUNG (MemoryHelper.cs):
+
+```csharp
+// Bildpuffer allokieren
+public static uEye.Defines.Status AllocImageMems(uEye.Camera Camera, int nCount)
+{
+    uEye.Defines.Status statusRet = uEye.Defines.Status.SUCCESS;
+    
+    for (int i = 0; i < nCount; i++)
+    {
+        statusRet = Camera.Memory.Allocate();
+        if (statusRet != uEye.Defines.Status.SUCCESS)
+        {
+            FreeImageMems(Camera); // Cleanup bei Fehler
+            break;
+        }
+    }
+    
+    return statusRet;
+}
+
+// Puffer-Sequenz initialisieren
+public static uEye.Defines.Status InitSequence(uEye.Camera Camera)
+{
+    int[] idList;
+    uEye.Defines.Status statusRet = Camera.Memory.GetList(out idList);
+    
+    if (statusRet == uEye.Defines.Status.SUCCESS)
+    {
+        statusRet = Camera.Memory.Sequence.Add(idList);
+    }
+    
+    return statusRet;
+}
+
+// Speicher freigeben
+public static uEye.Defines.Status FreeImageMems(uEye.Camera Camera)
+{
+    int[] idList;
+    uEye.Defines.Status statusRet = Camera.Memory.GetList(out idList);
+    
+    if (statusRet == uEye.Defines.Status.SUCCESS)
+    {
+        foreach (int nMemID in idList)
+        {
+            do
+            {
+                statusRet = Camera.Memory.Free(nMemID);
+                if (statusRet == uEye.Defines.Status.SEQ_BUFFER_IS_LOCKED)
+                {
+                    Thread.Sleep(1); // Warten bis Puffer freigegeben
+                    continue;
+                }
+                break;
+            } while (true);
+        }
+    }
+    
+    return statusRet;
+}
+```
+
+BILDAUFNAHME-MODI:
+
+```csharp
+// Live-Video starten (Freerun)
+uEye.Defines.Status status = m_Camera.Acquisition.Capture();
+
+// Einzelbild aufnehmen (Snapshot)
+status = m_Camera.Acquisition.Freeze();
+
+// Aufnahme stoppen
+status = m_Camera.Acquisition.Stop();
+
+// Aufnahme-Status prüfen
+Boolean isLive;
+m_Camera.Acquisition.HasStarted(out isLive);
+```
+
+FRAME-EVENT HANDLING:
+
+```csharp
+private void onFrameEvent(object sender, EventArgs e)
+{
+    uEye.Camera camera = sender as uEye.Camera;
+    
+    if (camera.IsOpened)
+    {
+        // Display-Modus prüfen
+        uEye.Defines.DisplayMode mode;
+        camera.Display.Mode.Get(out mode);
+        
+        // Nur in DIB-Modus verarbeiten
+        if (mode == uEye.Defines.DisplayMode.DiB)
+        {
+            // Letzten Puffer abrufen
+            Int32 memoryID;
+            uEye.Defines.Status statusRet = camera.Memory.GetLast(out memoryID);
+            
+            if (statusRet == uEye.Defines.Status.SUCCESS && memoryID > 0)
+            {
+                // Puffer sperren für Verarbeitung
+                if (camera.Memory.Lock(memoryID) == uEye.Defines.Status.SUCCESS)
+                {
+                    // Bitmap erstellen
+                    Bitmap bitmap;
+                    camera.Memory.ToBitmap(memoryID, out bitmap);
+                    
+                    // Bild verarbeiten (z.B. Zeichnungen hinzufügen)
+                    if (bitmap != null)
+                    {
+                        Graphics graphics = Graphics.FromImage(bitmap);
+                        // Hier können Zeichnungen hinzugefügt werden
+                        graphics.Dispose();
+                    }
+                    
+                    // Bild anzeigen
+                    camera.Display.Render(memoryID, renderMode);
+                    
+                    // Puffer freigeben
+                    camera.Memory.Unlock(memoryID);
+                    
+                    bitmap?.Dispose();
+                }
+            }
+        }
+    }
+}
+```
+
+BILDFORMATE UND FARBMODI:
+
+```csharp
+// Verfügbare Farbmodi abrufen
+uEye.Defines.ColorMode colorMode;
+m_Camera.PixelFormat.Get(out colorMode);
+
+// Häufig verwendete Farbmodi setzen:
+m_Camera.PixelFormat.Set(uEye.Defines.ColorMode.BGR8Packed);    // 24-Bit RGB
+m_Camera.PixelFormat.Set(uEye.Defines.ColorMode.Mono8);         // 8-Bit Graustufen
+m_Camera.PixelFormat.Set(uEye.Defines.ColorMode.RGBA8Packed);   // 32-Bit RGBA
+
+// Farbkonverter setzen
+uEye.Defines.ColorConverter convertMode;
+m_Camera.Color.Converter.Get(colorMode, out convertMode);
+m_Camera.Color.Converter.Set(colorMode, convertMode);
+```
+
+BILD SPEICHERN UND LADEN:
+
+```csharp
+// Bild speichern (Dialog wird automatisch angezeigt)
+m_Camera.Image.Save("");
+
+// Bild laden
+uEye.Defines.Status status = m_Camera.Image.Load("");
+if (status == uEye.Defines.Status.SUCCESS)
+{
+    // Anzeige aktualisieren
+    onFrameEvent(m_Camera, EventArgs.Empty);
+}
+```
+
+================================================================================
+6. EVENT-HANDLING UND BUFFER-MANAGEMENT
+================================================================================
+
+WICHTIGE EVENTS:
+
+```csharp
+// Frame-Event (neues Bild verfügbar)
+m_Camera.EventFrame += onFrameEvent;
+
+// Kamera-Events (Hot-Plug)
+uEye.Info.Camera.EventNewDevice += onCameraEvent;
+uEye.Info.Camera.EventDeviceRemoved += onCameraEvent;
+```
+
+DISPLAY-MODI:
+
+```csharp
+// DIB-Modus (Device Independent Bitmap)
+m_Camera.Display.Mode.Set(uEye.Defines.DisplayMode.DiB);
+
+// DirectRenderer-Modus (Hardware-beschleunigt)
+m_Camera.Display.Mode.Set(uEye.Defines.DisplayMode.Direct3D);
+m_Camera.Display.Mode.Set(uEye.Defines.DisplayMode.OpenGL);
+
+// Unterstützte Display-Modi prüfen
+uEye.Defines.DisplayMode supportedModes;
+m_Camera.DirectRenderer.GetSupported(out supportedModes);
+```
+
+RENDER-MODI:
+
+```csharp
+// Verschiedene Skalierungsmodi
+uEye.Defines.DisplayRenderMode renderMode;
+
+renderMode = uEye.Defines.DisplayRenderMode.FitToWindow;    // An Fenster anpassen
+renderMode = uEye.Defines.DisplayRenderMode.Normal;        // 1:1 Darstellung
+renderMode = uEye.Defines.DisplayRenderMode.DownScale_1_2; // 1:2 Verkleinerung
+
+// Skalierung für DirectRenderer
+m_Camera.DirectRenderer.SetScaling(true); // Aktiviert
+m_Camera.DirectRenderer.SetScaling(false); // Deaktiviert
+```
+
+PERFORMANCE-MONITORING:
+
+```csharp
+// Aktuelle FPS abrufen
+Double currentFps;
+m_Camera.Timing.Framerate.GetCurrentFps(out currentFps);
+
+// Capture-Status abrufen
+uEye.Types.CaptureStatus captureStatus;
+m_Camera.Information.GetCaptureStatus(out captureStatus);
+Console.WriteLine($"Fehlgeschlagene Frames: {captureStatus.Total}");
+
+// Bandbreiten-Information
+Double peakBandwidth, avgBandwidth;
+m_Camera.Information.GetPeakBandwidth(out peakBandwidth);
+m_Camera.Information.GetAvgBandwidth(out avgBandwidth);
+```
+
+================================================================================
+7. WICHTIGE KLASSEN UND STRUKTUREN
+================================================================================
+
+HAUPTKLASSEN:
+
+uEye.Camera
+- Zentrale Klasse für alle Kamera-Operationen
+- Eigenschaften: IsOpened, Timing, Memory, Display, etc.
+- Methoden: Init(), Exit(), Events
+
+uEye.Types.CameraInformation
+- CameraID: Eindeutige Kamera-ID
+- DeviceID: Device-ID für Initialisierung
+- Model: Kameramodell (z.B. "UI-2212SE-M")
+- SerialNumber: Seriennummer
+- InUse: Status ob Kamera bereits verwendet wird
+
+uEye.Types.Range<T>
+- Minimum: Minimaler Wert
+- Maximum: Maximaler Wert
+- Increment: Schrittweite
+
+uEye.Types.SensorInfo
+- SensorName: Name des Sensors
+- SensorID: Sensor-ID
+- MaxWidth/MaxHeight: Maximale Auflösung
+
+WICHTIGE ENUMERATIONEN:
+
+uEye.Defines.Status
+- SUCCESS: Operation erfolgreich
+- NO_SUCCESS: Allgemeiner Fehler
+- SEQ_BUFFER_IS_LOCKED: Puffer ist gesperrt
+
+uEye.Defines.ColorMode
+- BGR8Packed: 24-Bit RGB
+- Mono8: 8-Bit Graustufen
+- RGBA8Packed: 32-Bit RGBA
+
+uEye.Defines.DisplayMode
+- DiB: Device Independent Bitmap
+- Direct3D: Direct3D Rendering
+- OpenGL: OpenGL Rendering
+
+================================================================================
+8. BEST PRACTICES
+================================================================================
+
+FEHLERBEHANDLUNG:
+- Immer Rückgabewerte (uEye.Defines.Status) prüfen
+- Bei Fehlern entsprechende Cleanup-Operationen durchführen
+- Try-Catch für kritische Operationen verwenden
+
+SPEICHERVERWALTUNG:
+- Bildpuffer nach Verwendung freigeben
+- Event-Handler beim Schließen entfernen
+- Dispose-Pattern für Bitmap-Objekte verwenden
+
+THREADING:
+- UI-Updates nur im UI-Thread durchführen
+- Invoke() für Thread-sichere UI-Aktualisierungen verwenden
+- Lange Operationen in Background-Threads ausführen
+
+PERFORMANCE:
+- Mehrere Puffer für kontinuierliche Aufnahme verwenden (3-5 Puffer)
+- DirectRenderer für bessere Performance nutzen
+- Unnötige Bitmap-Konvertierungen vermeiden
+
+KONFIGURATION:
+- Parameter vor Änderungen sichern
+- Unterstützung von Features vor Verwendung prüfen
+- Kamera-spezifische Einschränkungen beachten
+
+================================================================================
+9. WIEDERVERWENDBARE CODE-BEISPIELE
+================================================================================
+
+MINIMALE KAMERA-INTEGRATION:
+
+```csharp
+public class SimpleCamera
+{
+    private uEye.Camera camera;
+    private const int BUFFER_COUNT = 3;
+    
+    public bool InitializeCamera(int deviceId)
+    {
+        camera = new uEye.Camera();
+        
+        // Kamera initialisieren
+        var status = camera.Init(deviceId | (int)uEye.Defines.DeviceEnumeration.UseDeviceID, IntPtr.Zero);
+        if (status != uEye.Defines.Status.SUCCESS) return false;
+        
+        // Farbmodus setzen
+        status = camera.PixelFormat.Set(uEye.Defines.ColorMode.BGR8Packed);
+        if (status != uEye.Defines.Status.SUCCESS) return false;
+        
+        // Speicher allokieren
+        for (int i = 0; i < BUFFER_COUNT; i++)
+        {
+            status = camera.Memory.Allocate();
+            if (status != uEye.Defines.Status.SUCCESS) return false;
+        }
+        
+        // Sequenz initialisieren
+        int[] idList;
+        camera.Memory.GetList(out idList);
+        status = camera.Memory.Sequence.Add(idList);
+        
+        return status == uEye.Defines.Status.SUCCESS;
+    }
+    
+    public Bitmap CaptureImage()
+    {
+        if (!camera.IsOpened) return null;
+        
+        // Einzelbild aufnehmen
+        var status = camera.Acquisition.Freeze();
+        if (status != uEye.Defines.Status.SUCCESS) return null;
+        
+        // Letzten Puffer abrufen
+        int memoryId;
+        status = camera.Memory.GetLast(out memoryId);
+        if (status != uEye.Defines.Status.SUCCESS) return null;
+        
+        // Bitmap erstellen
+        Bitmap bitmap;
+        status = camera.Memory.ToBitmap(memoryId, out bitmap);
+        
+        return status == uEye.Defines.Status.SUCCESS ? bitmap : null;
+    }
+    
+    public void StartLiveVideo()
+    {
+        if (camera.IsOpened)
+        {
+            camera.EventFrame += OnFrameReceived;
+            camera.Acquisition.Capture();
+        }
+    }
+    
+    public void StopLiveVideo()
+    {
+        if (camera.IsOpened)
+        {
+            camera.Acquisition.Stop();
+            camera.EventFrame -= OnFrameReceived;
+        }
+    }
+    
+    private void OnFrameReceived(object sender, EventArgs e)
+    {
+        // Frame-Verarbeitung hier implementieren
+        int memoryId;
+        if (camera.Memory.GetLast(out memoryId) == uEye.Defines.Status.SUCCESS)
+        {
+            // Bild verarbeiten...
+        }
+    }
+    
+    public void CloseCamera()
+    {
+        if (camera != null && camera.IsOpened)
+        {
+            StopLiveVideo();
+            
+            // Speicher freigeben
+            int[] idList;
+            if (camera.Memory.GetList(out idList) == uEye.Defines.Status.SUCCESS)
+            {
+                foreach (int id in idList)
+                {
+                    camera.Memory.Free(id);
+                }
+            }
+            
+            camera.Exit();
+        }
+    }
+}
+```
+
+KAMERA-AUSWAHL DIALOG:
+
+```csharp
+public static int ShowCameraSelectionDialog()
+{
+    uEye.Types.CameraInformation[] cameraList;
+    uEye.Info.Camera.GetCameraList(out cameraList);
+    
+    if (cameraList.Length == 0)
+    {
+        MessageBox.Show("Keine Kameras gefunden!");
+        return -1;
+    }
+    
+    // Einfache Auswahl der ersten verfügbaren Kamera
+    foreach (var camera in cameraList)
+    {
+        if (!camera.InUse)
+        {
+            return camera.DeviceID;
+        }
+    }
+    
+    MessageBox.Show("Alle Kameras sind bereits in Verwendung!");
+    return -1;
+}
+```
+
+PARAMETER-KONFIGURATION:
+
+```csharp
+public class CameraSettings
+{
+    public static void ConfigureBasicSettings(uEye.Camera camera)
+    {
+        // Belichtungszeit auf 10ms setzen
+        camera.Timing.Exposure.Set(10.0);
+        
+        // Framerate auf 30 fps setzen
+        camera.Timing.Framerate.Set(30.0);
+        
+        // Master Gain auf 50% setzen
+        camera.Gain.Hardware.Scaled.SetMaster(50);
+        
+        // Auto-Weißabgleich aktivieren
+        camera.AutoFeatures.Software.WhiteBalance.SetEnable(true);
+    }
+    
+    public static void SaveParametersToFile(uEye.Camera camera, string filename)
+    {
+        camera.Parameter.Save(filename);
+    }
+    
+    public static void LoadParametersFromFile(uEye.Camera camera, string filename)
+    {
+        // Aufnahme stoppen
+        bool wasLive;
+        camera.Acquisition.HasStarted(out wasLive);
+        if (wasLive) camera.Acquisition.Stop();
+        
+        // Parameter laden
+        camera.Parameter.Load(filename);
+        
+        // Aufnahme wieder starten falls vorher aktiv
+        if (wasLive) camera.Acquisition.Capture();
+    }
+}
+```
+
+VIDEO-AUFZEICHNUNG:
+
+```csharp
+public class VideoRecorder
+{
+    private uEye.Camera camera;
+    private bool isRecording = false;
+    
+    public bool StartRecording(string filename)
+    {
+        if (!camera.IsOpened) return false;
+        
+        var status = camera.Video.Start(filename);
+        isRecording = (status == uEye.Defines.Status.SUCCESS);
+        return isRecording;
+    }
+    
+    public bool StopRecording()
+    {
+        if (!isRecording) return true;
+        
+        var status = camera.Video.Stop();
+        isRecording = false;
+        return status == uEye.Defines.Status.SUCCESS;
+    }
+    
+    public bool IsRecording => camera.IsOpened && camera.Video.Running;
+}
+```
+
+================================================================================
+FAZIT
+================================================================================
+
+Das uEye .NET SDK bietet eine umfassende und gut strukturierte API für die 
+Integration von IDS-Kameras in .NET-Anwendungen. Die wichtigsten Punkte:
+
+1. Verwenden Sie immer die MemoryHelper-Klasse für Speicherverwaltung
+2. Prüfen Sie Rückgabewerte und implementieren Sie ordnungsgemäße Fehlerbehandlung
+3. Nutzen Sie Events für asynchrone Bildverarbeitung
+4. Beachten Sie Thread-Sicherheit bei UI-Updates
+5. Implementieren Sie ordnungsgemäße Cleanup-Routinen
+
+Diese Dokumentation bietet eine solide Grundlage für die Entwicklung eigener
+Kamera-Anwendungen mit dem uEye .NET SDK.
+
+================================================================================

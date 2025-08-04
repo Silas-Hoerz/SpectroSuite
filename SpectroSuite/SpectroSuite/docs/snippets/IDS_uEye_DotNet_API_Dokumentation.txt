@@ -1,0 +1,446 @@
+================================================================================
+IDS uEye .NET API Dokumentation für UI-2212SE-M Kamera
+================================================================================
+
+ÜBERSICHT
+---------
+Diese Dokumentation fasst alle wichtigen Informationen zur Verwendung der 
+uEyeDotNet.dll mit C# für die IDS Kamera UI-2212SE-M zusammen. Die API basiert 
+auf der uEye .NET Standard 2.0 Library und bietet eine vollständige 
+objektorientierte Schnittstelle zur Kamerasteuerung.
+
+WICHTIGE DLLS UND ABHÄNGIGKEITEN
+--------------------------------
+- uEyeDotNet.dll (Hauptbibliothek für .NET Standard 2.0)
+- uEyeDotNetFramework.dll (Framework-spezifische Erweiterungen)
+- ueye_api.dll / ueye_api_64.dll (Native Treiber)
+- ueye_tools.dll / ueye_tools_64.dll (Zusätzliche Tools)
+
+GRUNDLEGENDE NAMESPACES
+-----------------------
+using uEye;                    // Hauptnamespace
+using uEye.Defines;           // Enumerationen und Konstanten
+using uEye.Types;             // Datentypen und Strukturen
+
+================================================================================
+1. WICHTIGSTE FUNKTIONEN DER uEyeDotNet.dll
+================================================================================
+
+1.1 KAMERA-KLASSE (uEye.Camera)
+-------------------------------
+Die zentrale Klasse für alle Kameraoperationen:
+
+INITIALISIERUNG:
+- Camera() : Konstruktor
+- Init(int cameraId) : Kamera öffnen (0 = erste verfügbare Kamera)
+- Exit() : Kamera schließen und Ressourcen freigeben
+
+GRUNDLEGENDE EIGENSCHAFTEN:
+- Information : Kamerainformationen abrufen
+- Memory : Speicherverwaltung für Bildpuffer
+- Acquisition : Bildaufnahme-Steuerung
+- Display : Anzeige-Funktionen
+- PixelFormat : Farbmodus-Einstellungen
+- Size : Bildgröße und AOI (Area of Interest)
+- Timing : Belichtung, Framerate, PixelClock
+
+1.2 SPEICHERVERWALTUNG (Memory)
+------------------------------
+- Memory.Allocate() : Bildpuffer allokieren
+- Memory.Free(int memoryId) : Puffer freigeben
+- Memory.GetList(out int[] idList) : Liste aller Puffer-IDs
+- Memory.Lock(int memoryId) : Puffer für Zugriff sperren
+- Memory.Unlock(int memoryId) : Puffer entsperren
+- Memory.GetLast(out int memoryId) : Letzten Puffer abrufen
+- Memory.Sequence.Add(int[] idList) : Sequenz für Live-Video
+- Memory.Sequence.Clear() : Sequenz löschen
+
+1.3 BILDAUFNAHME (Acquisition)
+-----------------------------
+- Acquisition.Capture() : Live-Video starten
+- Acquisition.Stop() : Aufnahme stoppen
+- Acquisition.Freeze() : Einzelbild aufnehmen
+- Acquisition.HasStarted(out bool isStarted) : Status prüfen
+
+1.4 ANZEIGE (Display)
+--------------------
+- Display.Render(int memoryId, IntPtr windowHandle, DisplayRenderMode mode)
+- Display.Mode.Set(DisplayMode mode) : Anzeigemodus setzen
+- Display.Mode.Get(out DisplayMode mode) : Anzeigemodus abrufen
+
+================================================================================
+2. WICHTIGE PARAMETER UND EINSTELLUNGEN
+================================================================================
+
+2.1 PIXELCLOCK
+--------------
+Steuert die Geschwindigkeit des Sensors:
+- Timing.PixelClock.Set(int value) : PixelClock in MHz setzen
+- Timing.PixelClock.Get(out int value) : Aktuellen Wert abrufen
+- Timing.PixelClock.GetRange(out Range<int> range) : Min/Max-Bereich
+
+TYPISCHE WERTE: 5-40 MHz (abhängig vom Kameramodell)
+
+2.2 BELICHTUNGSZEIT (EXPOSURE)
+-----------------------------
+- Timing.Exposure.Set(double value) : Belichtung in ms setzen
+- Timing.Exposure.Get(out double value) : Aktuellen Wert abrufen
+- Timing.Exposure.GetRange(out Range<double> range) : Bereich abrufen
+- Timing.Exposure.Fine.* : Feineinstellung (falls unterstützt)
+
+BEREICHE: Typisch 0.02ms bis 1000ms
+
+2.3 FRAMERATE
+------------
+- Timing.Framerate.Set(double value) : Framerate in fps setzen
+- Timing.Framerate.Get(out double value) : Aktuellen Wert abrufen
+- Timing.Framerate.GetFrameRateRange(out Range<double> range)
+
+2.4 TRIGGER-MODI
+---------------
+- IO.Flash.Set() : Blitz-/Trigger-Ausgänge
+- EventFrame += handler : Event für neue Bilder
+- EventAutoBrightnessFinished += handler : Auto-Belichtung beendet
+
+2.5 FARBMODI (ColorMode)
+-----------------------
+Wichtige Farbmodi aus uEye.Defines.ColorMode:
+- Mono8 : 8-Bit Graustufen
+- Mono12 : 12-Bit Graustufen  
+- Mono16 : 16-Bit Graustufen
+- BGR8Packed : 24-Bit RGB
+- BGRA8Packed : 32-Bit RGBA
+- SensorRaw8/12/16 : Rohdaten vom Sensor
+
+VERWENDUNG:
+PixelFormat.Set(uEye.Defines.ColorMode.BGR8Packed);
+
+2.6 BILDGRÖSSE UND AOI
+---------------------
+- Size.AOI.Set(Rectangle rect) : Bildausschnitt setzen
+- Size.AOI.Get(out Rectangle rect) : Aktuellen Ausschnitt abrufen
+- Size.AOI.GetSizeRange(out Range<int> width, out Range<int> height)
+- Size.AOI.GetPosRange(out Range<int> x, out Range<int> y)
+
+================================================================================
+3. RÜCKGABEWERTE UND FEHLERBEHANDLUNG
+================================================================================
+
+3.1 STATUS-CODES (uEye.Defines.Status)
+-------------------------------------
+Alle API-Funktionen geben Status-Codes zurück:
+
+ERFOLG:
+- Status.SUCCESS : Operation erfolgreich
+
+HÄUFIGE FEHLER:
+- Status.INVALID_CAMERA_HANDLE : Kamera nicht initialisiert
+- Status.INVALID_PARAMETER : Ungültiger Parameter
+- Status.NO_ACTIVE_IMG_MEM : Kein aktiver Bildpuffer
+- Status.SEQ_BUFFER_IS_LOCKED : Puffer ist gesperrt
+- Status.CAPTURE_RUNNING : Aufnahme läuft bereits
+
+VERWENDUNG:
+uEye.Defines.Status status = m_Camera.Init(0);
+if (status != uEye.Defines.Status.SUCCESS)
+{
+    MessageBox.Show("Fehler beim Initialisieren: " + status);
+}
+
+3.2 KAMERA-HANDLES
+-----------------
+Die Camera-Klasse verwaltet interne Handles automatisch. Manuelle Handle-
+Verwaltung ist normalerweise nicht erforderlich.
+
+3.3 STRUKTUREN UND TYPEN
+-----------------------
+- uEye.Types.Range<T> : Wertebereich mit Minimum, Maximum, Increment
+- uEye.Types.SensorInfo : Sensor-Informationen
+- uEye.Types.CameraInfo : Kamera-Informationen
+- Rectangle : Bildausschnitt (System.Drawing.Rectangle)
+
+================================================================================
+4. BILDVERARBEITUNG
+================================================================================
+
+4.1 UNTERSTÜTZTE FORMATE
+------------------------
+- 8-Bit: Mono8, BGR8Packed, RGB8Packed
+- 12-Bit: Mono12, SensorRaw12
+- 16-Bit: Mono16, SensorRaw16
+- 32-Bit: BGRA8Packed, RGBA8Packed
+
+4.2 BIT-TIEFE
+------------
+Die UI-2212SE-M unterstützt typischerweise:
+- 8-Bit für Standard-Anwendungen
+- 12-Bit für erweiterten Dynamikbereich
+- Raw-Modi für maximale Bildqualität
+
+4.3 SPEICHERPUFFER-VERWALTUNG
+----------------------------
+EMPFOHLENES VORGEHEN:
+1. Mehrere Puffer allokieren (mindestens 3 für Live-Video)
+2. Puffer zur Sequenz hinzufügen
+3. Bei EventFrame: Puffer sperren, verarbeiten, entsperren
+
+BEISPIEL:
+private const int BUFFER_COUNT = 3;
+
+// Puffer allokieren
+for (int i = 0; i < BUFFER_COUNT; i++)
+{
+    status = m_Camera.Memory.Allocate();
+}
+
+// Zur Sequenz hinzufügen
+int[] idList;
+m_Camera.Memory.GetList(out idList);
+m_Camera.Memory.Sequence.Add(idList);
+
+4.4 FARBKONVERTIERUNG
+--------------------
+- Color.Converter.Set() : Konvertierungsalgorithmus wählen
+- Color.Converter.GetSupported() : Unterstützte Modi abrufen
+
+Modi:
+- Software3X3 : Software-Konvertierung 3x3 Matrix
+- Software5X5 : Software-Konvertierung 5x5 Matrix  
+- Hardware3X3 : Hardware-Konvertierung (falls verfügbar)
+
+================================================================================
+5. THREADING, EVENTS UND PERFORMANCE
+================================================================================
+
+5.1 EVENT-HANDLING
+------------------
+WICHTIGE EVENTS:
+- EventFrame : Neues Bild verfügbar
+- EventAutoBrightnessFinished : Auto-Belichtung abgeschlossen
+
+THREAD-SICHERHEIT:
+Events werden in separaten Threads ausgelöst. UI-Updates müssen über 
+Invoke/BeginInvoke erfolgen:
+
+private void onFrameEvent(object sender, EventArgs e)
+{
+    uEye.Camera camera = sender as uEye.Camera;
+    
+    int memoryId;
+    if (camera.Memory.GetLast(out memoryId) == uEye.Defines.Status.SUCCESS)
+    {
+        if (camera.Memory.Lock(memoryId) == uEye.Defines.Status.SUCCESS)
+        {
+            // Bild verarbeiten
+            camera.Display.Render(memoryId, displayHandle, 
+                uEye.Defines.DisplayRenderMode.FitToWindow);
+            camera.Memory.Unlock(memoryId);
+        }
+    }
+}
+
+5.2 PERFORMANCE-OPTIMIERUNG
+---------------------------
+- Verwenden Sie Hardware-Konvertierung wenn verfügbar
+- Minimieren Sie Speicher-Allokationen im Event-Handler
+- Nutzen Sie mehrere Puffer für kontinuierliche Aufnahme
+- Vermeiden Sie blockierende Operationen in Event-Handlern
+
+5.3 THREADING-EMPFEHLUNGEN
+--------------------------
+- Kamera-Initialisierung im Haupt-Thread
+- Bildverarbeitung in separaten Worker-Threads
+- UI-Updates nur über Control.Invoke()
+- Vermeiden Sie gleichzeitige Zugriffe auf Kamera-Objekte
+
+================================================================================
+6. TYPISCHE FEHLERQUELLEN UND LÖSUNGEN
+================================================================================
+
+6.1 INITIALISIERUNGSFEHLER
+--------------------------
+PROBLEM: "Camera initializing failed"
+LÖSUNGEN:
+- Prüfen Sie, ob Kamera angeschlossen und erkannt wird
+- Verwenden Sie IDS Camera Manager zur Diagnose
+- Stellen Sie sicher, dass keine andere Anwendung die Kamera verwendet
+- Prüfen Sie USB-Verbindung und Treiber-Installation
+
+6.2 SPEICHER-PROBLEME
+--------------------
+PROBLEM: "Allocate Memory failed"
+LÖSUNGEN:
+- Reduzieren Sie Bildgröße oder Farbtiefe
+- Geben Sie nicht verwendete Puffer frei
+- Prüfen Sie verfügbaren Arbeitsspeicher
+- Verwenden Sie weniger gleichzeitige Puffer
+
+6.3 SEQUENZ-FEHLER
+-----------------
+PROBLEM: "Add to sequence failed"
+LÖSUNGEN:
+- Stoppen Sie laufende Aufnahme vor Sequenz-Änderungen
+- Löschen Sie alte Sequenz vor dem Hinzufügen neuer Puffer
+- Stellen Sie sicher, dass Puffer erfolgreich allokiert wurden
+
+6.4 LIVE-VIDEO PROBLEME
+----------------------
+PROBLEM: Kein Live-Bild oder schlechte Performance
+LÖSUNGEN:
+- Prüfen Sie EventFrame-Handler Implementation
+- Reduzieren Sie Framerate bei Performance-Problemen
+- Optimieren Sie PixelClock-Einstellungen
+- Verwenden Sie geeigneten DisplayRenderMode
+
+6.5 PARAMETER-FEHLER
+-------------------
+PROBLEM: "Setting parameter failed"
+LÖSUNGEN:
+- Prüfen Sie gültige Wertebereiche mit GetRange()
+- Stellen Sie sicher, dass Kamera den Parameter unterstützt
+- Beachten Sie Abhängigkeiten zwischen Parametern
+- Setzen Sie Parameter in korrekter Reihenfolge
+
+================================================================================
+7. VOLLSTÄNDIGES BEISPIEL
+================================================================================
+
+using System;
+using System.Windows.Forms;
+using uEye;
+using uEye.Defines;
+
+public partial class CameraForm : Form
+{
+    private uEye.Camera m_Camera;
+    private const int BUFFER_COUNT = 3;
+    
+    private void InitializeCamera()
+    {
+        m_Camera = new uEye.Camera();
+        
+        // Kamera öffnen
+        Status status = m_Camera.Init(0);
+        if (status != Status.SUCCESS)
+        {
+            MessageBox.Show("Kamera-Initialisierung fehlgeschlagen: " + status);
+            return;
+        }
+        
+        // Farbmodus setzen
+        status = m_Camera.PixelFormat.Set(ColorMode.BGR8Packed);
+        if (status != Status.SUCCESS)
+        {
+            MessageBox.Show("Farbmodus setzen fehlgeschlagen: " + status);
+            return;
+        }
+        
+        // Speicher allokieren
+        for (int i = 0; i < BUFFER_COUNT; i++)
+        {
+            status = m_Camera.Memory.Allocate();
+            if (status != Status.SUCCESS)
+            {
+                MessageBox.Show("Speicher-Allokation fehlgeschlagen: " + status);
+                return;
+            }
+        }
+        
+        // Sequenz initialisieren
+        int[] idList;
+        status = m_Camera.Memory.GetList(out idList);
+        if (status == Status.SUCCESS)
+        {
+            status = m_Camera.Memory.Sequence.Add(idList);
+        }
+        
+        // Event-Handler registrieren
+        m_Camera.EventFrame += OnFrameEvent;
+        
+        // Live-Video starten
+        status = m_Camera.Acquisition.Capture();
+        if (status != Status.SUCCESS)
+        {
+            MessageBox.Show("Live-Video starten fehlgeschlagen: " + status);
+        }
+    }
+    
+    private void OnFrameEvent(object sender, EventArgs e)
+    {
+        uEye.Camera camera = sender as uEye.Camera;
+        
+        int memoryId;
+        Status status = camera.Memory.GetLast(out memoryId);
+        
+        if (status == Status.SUCCESS && memoryId > 0)
+        {
+            if (camera.Memory.Lock(memoryId) == Status.SUCCESS)
+            {
+                // Bild anzeigen
+                camera.Display.Render(memoryId, pictureBox.Handle, 
+                    DisplayRenderMode.FitToWindow);
+                camera.Memory.Unlock(memoryId);
+            }
+        }
+    }
+    
+    private void CleanupCamera()
+    {
+        if (m_Camera != null)
+        {
+            // Aufnahme stoppen
+            m_Camera.Acquisition.Stop();
+            
+            // Sequenz löschen
+            m_Camera.Memory.Sequence.Clear();
+            
+            // Speicher freigeben
+            int[] idList;
+            if (m_Camera.Memory.GetList(out idList) == Status.SUCCESS)
+            {
+                foreach (int id in idList)
+                {
+                    m_Camera.Memory.Free(id);
+                }
+            }
+            
+            // Kamera schließen
+            m_Camera.Exit();
+        }
+    }
+}
+
+================================================================================
+8. ZUSÄTZLICHE HINWEISE
+================================================================================
+
+8.1 KOMPATIBILITÄT
+------------------
+- .NET Framework 4.6.1 oder höher
+- .NET Standard 2.0 kompatibel
+- Windows 7/8/10/11 (32-bit und 64-bit)
+- Visual Studio 2017 oder höher empfohlen
+
+8.2 LIZENZIERUNG
+---------------
+- Kommerzielle Nutzung erfordert entsprechende IDS-Lizenz
+- Entwicklung und Tests meist kostenfrei möglich
+- Prüfen Sie aktuelle Lizenzbedingungen bei IDS
+
+8.3 SUPPORT UND DOKUMENTATION
+-----------------------------
+- Vollständige HTML-Dokumentation in Handbücher/IDS Software Suite/
+- Beispielcode in develop/sources/uEye_DotNet_*
+- IDS Support: https://en.ids-imaging.com/support
+- Community Forum verfügbar
+
+8.4 UPDATES
+----------
+- Regelmäßige Updates der IDS Software Suite
+- Neue Features und Bugfixes
+- Backward-Kompatibilität meist gewährleistet
+- Aktuelle Version: 4.97 (Stand dieser Dokumentation)
+
+================================================================================
+ENDE DER DOKUMENTATION
+================================================================================
